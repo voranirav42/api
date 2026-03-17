@@ -1,52 +1,51 @@
-import os
+import requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-from playwright.sync_api import sync_playwright
 
 app = Flask(__name__)
 CORS(app)
 
-# Render પર બ્રાઉઝર ક્યાં સેવ થાય છે તેનો પાથ
-PLAYWRIGHT_BROWSERS_PATH = "/opt/render/.cache/ms-playwright"
-os.environ["PLAYWRIGHT_BROWSERS_PATH"] = PLAYWRIGHT_BROWSERS_PATH
-
-def get_mp4_link(url):
-    with sync_playwright() as p:
-        try:
-            # બ્રાઉઝર લોન્ચ કરતી વખતે પાથ ચેક કરશે
-            browser = p.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.goto("https://teradownloader.com/", timeout=60000)
-            page.fill('input[type="text"]', url)
-            page.click('button[type="submit"]')
-            
-            with page.expect_response(lambda response: "/api" in response.url, timeout=30000) as response_info:
-                response = response_info.value
-                json_data = response.json()
-                browser.close()
-                return json_data.get("download_link")
-        except Exception as e:
-            print(f"Error occurred: {e}")
-            if 'browser' in locals():
-                browser.close()
-            return None
+def get_terabox_link(terabox_url):
+    # આ એક થર્ડ પાર્ટી API નો ઉપયોગ કરે છે જે બ્રાઉઝર વગર લિંક આપે છે
+    api_url = "https://terabox-dl.qtcloud.workers.dev/api/get-info"
+    
+    params = {
+        "url": terabox_url
+    }
+    
+    try:
+        response = requests.get(api_url, params=params, timeout=20)
+        data = response.json()
+        
+        # લિંક ચેક કરો
+        if "download_link" in data:
+            return data["download_link"]
+        elif "list" in data and len(data["list"]) > 0:
+            return data["list"][0].get("download_link")
+        
+        return None
+    except Exception as e:
+        print(f"Request Error: {e}")
+        return None
 
 @app.route('/')
 def home():
-    return "API is running correctly!"
+    return "Terabox API is Live (No Browser Mode)!"
 
 @app.route('/download', methods=['POST'])
 def download():
     data = request.json
-    terabox_url = data.get('url')
-    if not terabox_url:
-        return jsonify({"error": "No URL provided"}), 400
+    url = data.get('url')
+    
+    if not url:
+        return jsonify({"success": False, "error": "No URL provided"}), 400
         
-    mp4_link = get_mp4_link(terabox_url)
-    if mp4_link:
-        return jsonify({"success": True, "download_link": mp4_link})
+    final_link = get_terabox_link(url)
+    
+    if final_link:
+        return jsonify({"success": True, "download_link": final_link})
     else:
-        return jsonify({"error": "Link extraction failed. Server might be busy."}), 500
+        return jsonify({"success": False, "error": "Could not extract link. The service might be down."})
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=5000)
