@@ -5,24 +5,19 @@ from flask_cors import CORS
 app = Flask(__name__)
 CORS(app)
 
-def get_terabox_link(terabox_url):
-    # આ Direct API છે, જેમાં Chromium ની જરૂર પડતી નથી
-    api_url = "https://terabox-dl.qtcloud.workers.dev/api/get-info"
-    params = {"url": terabox_url}
+def get_terabox_link(url):
+    # Direct API logic - No browser needed
+    api_url = f"https://terabox-dl.qtcloud.workers.dev/api/get-info?url={url}"
     try:
-        response = requests.get(api_url, params=params, timeout=20)
-        data = response.json()
-        if "download_link" in data:
-            return data["download_link"]
-        elif "list" in data and len(data["list"]) > 0:
-            return data["list"][0].get("download_link")
-        return None
+        r = requests.get(api_url, timeout=15)
+        data = r.json()
+        return data.get("download_link") or data.get("list", [{}])[0].get("download_link")
     except:
         return None
 
 @app.route('/')
 def home():
-    return "API is Running Smoothly!"
+    return "API is Running Without Chromium!"
 
 @app.route('/download', methods=['POST'])
 def download():
@@ -30,12 +25,8 @@ def download():
     url = data.get('url')
     if not url:
         return jsonify({"success": False, "error": "URL provide kar bhai"}), 400
-    
-    final_link = get_terabox_link(url)
-    if final_link:
-        return jsonify({"success": True, "download_link": final_link})
-    else:
-        return jsonify({"success": False, "error": "Link extraction failed."})
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    link = get_terabox_link(url)
+    if link:
+        return jsonify({"success": True, "download_link": link})
+    return jsonify({"success": False, "error": "Extraction failed. Try again."})
